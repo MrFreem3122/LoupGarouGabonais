@@ -1,0 +1,12 @@
+{
+  "name": "loup-garou-gabonais",
+  "version": "1.0.0",
+  "description": "Jeu de déduction en ligne inspiré du Loup-Garou, dans un quartier gabonais. Serveur Node sans dépendance.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/simulate.js 5 7"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}
