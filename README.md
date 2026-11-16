@@ -22,13 +22,23 @@ La nuit, les Ndoki choisissent qui manger, pendant que le Nganga consulte les es
 | Ndoki | Ndoki | Chaque nuit, mange un voisin avec les autres Ndoki. |
 | Nganga | Village | Chaque nuit, découvre le rôle d'un joueur (une vision sur cinq est floue : le camp seulement). |
 | Policier | Village | Chaque nuit, met un joueur au poste : il ne peut ni agir ni lire le chat. |
-| Marabout | Village | Chaque nuit, bénit un joueur pour le protéger. |
-| Pasteur | Village | Une fois : son sermon fait recommencer le vote. |
+| Marabout | Village | Chaque nuit, bénit un joueur : protégé des Ndoki, du feu et de la secte. |
+| Pasteur | Village | Une fois : son sermon fait recommencer le vote. La secte ne peut pas l'acheter, et s'il est visé il découvre le Gourou. |
 | Gardien des byéri | Village | Une fois : protège un joueur avec le reliquaire. |
-| Bouc émissaire | Seul | Gagne seul s'il est chassé au vote. |
+| Chasseur de brousse | Village | Quand il meurt, il tire un dernier coup de fusil. |
+| Chauffeur de clando | Village | Emmène un joueur faire un tour la nuit (il n'est pas chez lui). S'il embarque un Ndoki, il se fait manger. |
+| Ivrogne du maquis | Village | Croit être Nganga, Policier ou Marabout, mais ses actions ne servent à rien. Il le découvre à sa mort. |
 | Habitant | Village | Aucun pouvoir. |
+| Bouc émissaire | Seul | Gagne seul s'il est chassé au vote. |
+| Pyromane | Seul | Arrose une maison chaque nuit, ou met le feu à toutes les maisons arrosées. Gagne s'il reste le dernier (ou seul face à un voisin). |
+| Gourou des Rose-Croix | Secte | Chaque nuit, propose la richesse à un joueur : il devient Adepte. Les Ndoki, le Pyromane, le couple et le Pasteur refusent toujours. |
+| Femme de nuit | Couple | La première nuit, choisit son mari de nuit. Ils gagnent s'ils sont les deux derniers. Si l'un meurt, l'autre meurt de chagrin. |
 
-Les Ndoki sont fixes (1 jusqu'à 5 joueurs, 2 de 6 à 9, 3 à 10), le Nganga est toujours présent, et les autres rôles sont tirés au hasard selon le nombre de joueurs.
+Les Ndoki sont fixes (1 jusqu'à 5 joueurs, 2 de 6 à 9, 3 à 10), le Nganga est toujours présent, et les autres rôles sont tirés au hasard selon le nombre de joueurs (Pyromane à partir de 6, secte à partir de 7).
+
+**Qui gagne ?** Un camp gagne quand il est le seul à avoir encore des joueurs en vie. Les Ndoki et la secte gagnent aussi quand ils sont aussi nombreux que les simples voisins, mais seulement s'il ne reste aucun autre camp dangereux.
+
+**Ordre de la nuit :** arrestation, tour en clando, protections, choix du mari de nuit, offre de la secte, attaque des Ndoki, feu du Pyromane, puis visions.
 
 ## Lancer en local
 
@@ -45,6 +55,7 @@ Pour tester vite, `TIME_SCALE` raccourcit tous les minuteurs (`TIME_SCALE=0.1` =
 ```bash
 TIME_SCALE=0.02 node server.js &
 node test/simulate.js 5 7   # 5 parties de 7 joueurs
+# FORCE_ROLES=pyromane,gourou,femme force des rôles pour les tests
 ```
 
 ## Mettre en ligne

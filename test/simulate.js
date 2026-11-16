@@ -28,7 +28,7 @@ function act(b) {
   const me = s.me;
   const key = s.phase + ":" + s.night + ":" + (s.endsAt || 0);
   const others = s.players.filter((p) => p.alive && p.id !== me.id);
-  if (!me.alive && s.phase !== "end") return;
+  if (!me.alive && s.phase !== "end" && s.phase !== "hunter") return;
   const once = (k, fn) => { if (!b.acted.has(key + k)) { b.acted.add(key + k); setTimeout(fn, Math.random() * 30); } };
   switch (s.phase) {
     case "roles": once("r", () => b.send({ type: "ready" })); break;
@@ -41,18 +41,29 @@ function act(b) {
       }, 60));
       break;
     case "night_action": {
-      const r = me.role.key;
+      const r = s.nightAction.role;
       const mates = me.mates || [];
+      const secte = (me.secte || []).map((x) => x.id);
       if (r === "ndoki") {
         once("chat", () => b.send({ type: "ndokiChat", text: "on mange qui ?" }));
         once("n", () => {
           const victims = others.filter((p) => !mates.includes(p.id));
-          // Ndoki follow the first vote already cast so they usually agree.
           const votes = Object.values(s.nightAction.ndokiVotes || {});
-          b.send({ type: "night", target: votes[0] || pick(victims).id });
+          if (victims.length) b.send({ type: "night", target: votes[0] || pick(victims).id });
         });
       } else if (r === "gardien") once("n", () => b.send({ type: "night", target: Math.random() < 0.5 ? "skip" : pick([...others, me]).id }));
-      else if (["nganga", "policier"].includes(r)) once("n", () => {
+      else if (r === "pyromane") once("n", () => {
+        const d = s.nightAction.doused || [];
+        if (d.length >= 2 || (d.length && Math.random() < 0.4)) b.send({ type: "night", target: "ignite" });
+        else if (others.length) b.send({ type: "night", target: pick(others).id });
+      });
+      else if (r === "gourou") once("n", () => {
+        const opts = others.filter((p) => !secte.includes(p.id));
+        if (opts.length) b.send({ type: "night", target: pick(opts).id });
+      });
+      else if (r === "adepte") once("chat", () => b.send({ type: "secteChat", text: "la richesse arrive" }));
+      else if (r === "femme") { if (!s.nightAction.married) once("n", () => others.length && b.send({ type: "night", target: pick(others).id })); }
+      else if (["nganga", "policier", "chauffeur"].includes(r)) once("n", () => {
         const opts = others.filter((p) => p.id !== s.nightAction.forbidden);
         if (opts.length) b.send({ type: "night", target: pick(opts).id });
       });
@@ -62,6 +73,9 @@ function act(b) {
       });
       break;
     }
+    case "hunter":
+      if (s.hunter.isMe && !s.hunter.shot) once("h", () => b.send({ type: "shoot", target: Math.random() < 0.2 || !others.length ? "skip" : pick(others).id }));
+      break;
     case "night_chat":
       once("m", () => b.send({ type: "chat", text: `rumeur de ${b.name}` }));
       break;
@@ -109,7 +123,7 @@ async function game(n) {
     if (Date.now() - t0 > 120000) throw new Error("Game did not finish: phase " + host.state.phase);
   }
   const s = host.state;
-  const roles = host.bilan.roles.map((r) => r.role.key);
+  const roles = host.bilan.roles.map((r) => r.role.key + (r.firstRole ? "(" + r.firstRole.key + ")" : ""));
   const errs = bots.flatMap((b) => b.errors);
   // Secrets: nobody but Ndoki may see mates; nobody saw roles of living players before the end.
   bots.forEach((b) => b.ws.close());

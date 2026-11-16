@@ -46,26 +46,52 @@ const IMG = {
   bouc: "/img/bouc-emissaire.jpg",
   habitant: "/img/habitant.jpg",
   chef: "/img/chef.jpg",
+  chasseur: "/img/chasseur.jpg",
+  chauffeur: "/img/chauffeur.jpg",
+  ivrogne: "/img/ivrogne.jpg",
+  pyromane: "/img/pyromane.jpg",
+  gourou: "/img/gourou.jpg",
+  adepte: "/img/adepte.jpg",
+  femme: "/img/femme-de-nuit.jpg",
   nuit: "/img/nuit.jpg",
   maquis: "/img/maquis.jpg",
   poste: "/img/au-poste.jpg",
   mange: "/img/mange.jpg",
+  incendie: "/img/incendie.jpg",
   village: "/img/victoire-village.jpg",
   ndokiWin: "/img/victoire-ndoki.jpg",
+  secteWin: "/img/victoire-secte.jpg",
+  pyroWin: "/img/victoire-pyromane.jpg",
+  coupleWin: "/img/victoire-couple.jpg",
 };
 
 const ROLE_LIST = [
   ["nganga", "Nganga", "village", "Chaque nuit, découvre le rôle d'un joueur. Une vision sur cinq est floue."],
   ["ndoki", "Ndoki", "ndoki", "Chaque nuit, mange un voisin avec les autres Ndoki. Le jour, fais semblant."],
   ["policier", "Policier", "village", "Chaque nuit, met un joueur au poste : il ne peut ni agir ni lire le chat."],
-  ["marabout", "Marabout", "village", "Chaque nuit, bénit un joueur pour le protéger des Ndoki."],
-  ["pasteur", "Pasteur", "village", "Une fois : son sermon fait recommencer le vote."],
+  ["marabout", "Marabout", "village", "Chaque nuit, bénit un joueur : protégé des Ndoki, du feu et de la secte."],
+  ["pasteur", "Pasteur", "village", "Une fois : son sermon fait recommencer le vote. La secte ne peut pas l'acheter."],
   ["gardien", "Gardien des byéri", "village", "Une fois : protège un joueur avec le reliquaire."],
-  ["bouc", "Bouc émissaire", "seul", "Gagne seul s'il est chassé par le vote du jour."],
+  ["chasseur", "Chasseur de brousse", "village", "Quand il meurt, il tire un dernier coup de fusil."],
+  ["chauffeur", "Chauffeur de clando", "village", "Emmène un joueur faire un tour la nuit. Gare s'il embarque un Ndoki."],
+  ["ivrogne", "Ivrogne du maquis", "village", "Croit avoir un pouvoir. Il découvre la vérité à sa mort."],
   ["habitant", "Habitant", "village", "Aucun pouvoir : écoute les rumeurs, débat, vote."],
+  ["bouc", "Bouc émissaire", "seul", "Gagne seul s'il est chassé par le vote du jour."],
+  ["pyromane", "Pyromane", "pyromane", "Arrose des maisons, puis y met le feu. Gagne s'il reste le dernier."],
+  ["gourou", "Gourou des Rose-Croix", "secte", "Achète un voisin chaque nuit avec la richesse. La secte veut rester seule."],
+  ["adepte", "Adepte de la secte", "secte", "A accepté la richesse. Aide la secte à rester seule dans le quartier."],
+  ["femme", "Femme de nuit", "couple", "Choisit un mari de nuit. Ensemble, ils veulent être les deux derniers."],
   ["chef", "Chef de quartier", "titre", "Élu par le village. Clôture le débat et départage les égalités."],
 ];
-const CAMP_LABEL = { village: "Camp du village", ndoki: "Camp des Ndoki", seul: "Joue seul", titre: "Titre élu" };
+const CAMP_LABEL = { village: "Camp du village", ndoki: "Camp des Ndoki", seul: "Joue seul", titre: "Titre élu", pyromane: "Joue seul", secte: "Secte des Rose-Croix", couple: "Le couple de nuit" };
+const CAUSE = {
+  ndoki: (n) => `Les Ndoki ont mangé ${n}`,
+  feu: (n) => `La maison de ${n} a brûlé`,
+  chagrin: (n) => `${n} est mort de chagrin`,
+  client: (n) => `${n} est parti avec un drôle de client et n'est jamais revenu`,
+  fusil: (n) => `${n} a pris le coup de fusil du Chasseur`,
+  vote: (n) => `Le quartier a chassé ${n}`,
+};
 
 const COLORS = ["#1f9d6b", "#3a75c4", "#b8452f", "#8e5ab8", "#c97a1e", "#24808c", "#5e6270", "#b54a7d", "#6f8a1f", "#a0522d"];
 
@@ -287,17 +313,28 @@ function screenLobby() {
     el("button", { class: "link-btn", type: "button", onclick: () => send("leave") }, "Quitter la partie"));
 }
 
+function teamLines() {
+  const me = S.me;
+  const out = [];
+  const mates = (me.mates || []).map(playerById).filter(Boolean);
+  if (mates.length) out.push(el("p", { class: "small" }, "Tes complices Ndoki : ", el("b", {}, mates.map((m) => m.name).join(", "))));
+  const secte = (me.secte || []).map((x) => ({ ...playerById(x.id), gourou: x.gourou })).filter((x) => x.name);
+  if (secte.length) out.push(el("p", { class: "small" }, "La secte : ", el("b", {}, secte.map((x) => x.name + (x.gourou ? " (Gourou)" : "")).join(", "))));
+  const partner = me.partner && playerById(me.partner);
+  if (partner) out.push(el("p", { class: "small", style: "color:var(--lamp)" }, "Ton conjoint de nuit : ", el("b", {}, partner.name), ". Vous devez être les deux derniers."));
+  return out;
+}
+
 function screenRoles() {
   const r = S.me.role;
-  const mates = (S.me.mates || []).map(playerById).filter(Boolean);
   return el("section", { class: "screen" },
     phaseBar("Ton rôle, en secret"),
     art(IMG[r.key], `Illustration du rôle ${r.name}`),
     el("div", { class: "center stack" },
-      el("h1", { style: "font-size:44px" }, r.name),
+      el("h1", { style: "font-size:40px" }, r.name),
       el("p", { class: campClass(r.camp), style: "font-weight:700" }, CAMP_LABEL[r.camp]),
       el("p", { style: "font-size:16px;line-height:1.45" }, r.power),
-      mates.length ? el("p", { class: "small" }, "Tes complices Ndoki : ", el("b", {}, mates.map((m) => m.name).join(", "))) : null,
+      teamLines(),
       el("p", { class: "small muted" }, "Ne le montre à personne.")),
     el("div", { class: "grow" }),
     S.roles.ready
@@ -337,14 +374,24 @@ function screenElection() {
 const NIGHT_PROMPTS = {
   nganga: ["Qui consulter cette nuit ?", "Les esprits te diront son rôle demain matin."],
   policier: ["Qui mettre au poste ?", "Il ne pourra ni agir ni lire le chat cette nuit."],
-  marabout: ["Qui bénir cette nuit ?", "Ta bénédiction le protège des Ndoki. Tu peux te bénir toi-même."],
+  marabout: ["Qui bénir cette nuit ?", "Ta bénédiction le protège de tout cette nuit. Tu peux te bénir toi-même."],
   gardien: ["Utiliser le reliquaire ?", "Une seule fois dans la partie : il protège un joueur pour cette nuit."],
+  chauffeur: ["Qui emmener faire un tour ?", "Il ne sera pas chez lui cette nuit. Mais si c'est un Ndoki, il te mange."],
+  femme: ["Qui sera ton mari de nuit ?", "Vous devrez être les deux derniers du quartier. Si l'un meurt, l'autre meurt de chagrin."],
+  gourou: ["À qui proposer la richesse ?", "S'il accepte, il entre dans la secte. Les Ndoki, le Pyromane et le Pasteur refusent toujours."],
 };
+
+function teamChannel(id, title, messages, msgType, color) {
+  return el("div", { class: "card danger" },
+    el("p", { class: "small", style: `font-weight:700;color:${color}` }, title),
+    chatLog(id, messages || [], (m) => el("p", { class: "small" }, el("b", { style: `color:${color}` }, `${m.name} : `), m.text), "Personne n'a encore parlé."),
+    composer(id + "Msg", "Écris à ton équipe…", (text) => send(msgType, { text })));
+}
 
 function screenNightAction() {
   const me = S.me;
   const na = S.nightAction;
-  const role = me.role.key;
+  const role = na.role || me.role.key;
   const living = S.players.filter((p) => p.alive);
   const others = living.filter((p) => p.id !== me.id);
   const bar = phaseBar(`Nuit ${S.night} · phase d'action`);
@@ -357,10 +404,9 @@ function screenNightAction() {
 
   if (role === "ndoki") {
     const mates = me.mates || [];
-    const targets = living.filter((p) => p.id !== me.id && !mates.includes(p.id));
-    const votes = na.ndokiVotes || {};
+    const targets = others.filter((p) => !mates.includes(p.id));
     const tally = {};
-    for (const t of Object.values(votes)) tally[t] = (tally[t] || 0) + 1;
+    for (const t of Object.values(na.ndokiVotes || {})) tally[t] = (tally[t] || 0) + 1;
     return el("section", { class: "screen" },
       bleed(IMG.ndoki, "Une Ndoki souriante avec un hibou sur l'épaule", true), bar,
       el("h1", { style: "font-size:28px" }, "Qui manger cette nuit ?"),
@@ -368,10 +414,35 @@ function screenNightAction() {
       Object.keys(tally).length
         ? el("p", { class: "small" }, "Votes des Ndoki : ", Object.entries(tally).map(([id, c]) => `${playerById(id)?.name} (${c})`).join(", "), ". Il faut être d'accord, sinon personne n'est mangé.")
         : el("p", { class: "small muted" }, "Mettez-vous d'accord : en cas d'égalité, personne n'est mangé."),
-      mates.length ? el("div", { class: "card danger" },
-        el("p", { class: "small", style: "font-weight:700;color:var(--red-soft)" }, "Canal des Ndoki"),
-        chatLog("ndokiChat", na.ndokiChat || [], (m) => el("p", { class: "small" }, el("b", { style: "color:var(--red-soft)" }, `${m.name} : `), m.text), "Personne n'a encore parlé."),
-        composer("ndokiMsg", "Écris à tes complices…", (text) => send("ndokiChat", { text }))) : null);
+      mates.length ? teamChannel("ndokiChat", "Canal des Ndoki", na.ndokiChat, "ndokiChat", "var(--red-soft)") : null);
+  }
+
+  if (role === "pyromane") {
+    const doused = (na.doused || []).map(playerById).filter(Boolean);
+    return el("section", { class: "screen" },
+      bleed(IMG.pyromane, "Le Pyromane avec son bidon d'essence", true), bar,
+      el("h1", { style: "font-size:28px" }, "Arroser ou allumer ?"),
+      el("p", { class: "muted small" }, "Arrose une maison en secret, ou mets le feu : toutes les maisons arrosées brûlent d'un coup."),
+      pickGrid(others, { selected: na.choice, label: "Arroser une maison", onPick: (p) => send("night", { target: p.id }) }),
+      el("p", { class: "small" }, doused.length ? `Maisons arrosées : ${doused.map((p) => p.name).join(", ")}.` : "Aucune maison arrosée pour l'instant."),
+      el("button", { class: "btn red", type: "button", disabled: !doused.length, "aria-pressed": String(na.choice === "ignite"), onclick: () => send("night", { target: "ignite" }) },
+        na.choice === "ignite" ? "Le feu est prêt" : `Mettre le feu (${doused.length} maison${doused.length > 1 ? "s" : ""})`));
+  }
+
+  if (role === "adepte") {
+    const choice = na.gourouChoice && playerById(na.gourouChoice);
+    return el("section", { class: "screen" },
+      bleed(IMG.adepte, "Un Adepte de la secte, lunettes de soleil neuves", true), bar,
+      el("h1", { style: "font-size:28px" }, "La secte se réunit."),
+      el("p", { class: "muted small" }, choice ? `Le Gourou propose la richesse à ${choice.name} cette nuit.` : "Le Gourou choisit à qui proposer la richesse."),
+      teamChannel("secteChat", "Canal de la secte", na.secteChat, "secteChat", "var(--lamp)"));
+  }
+
+  if (role === "femme" && na.married) {
+    const partner = me.partner && playerById(me.partner);
+    return el("section", { class: "screen" }, bleed(IMG.femme, "La Femme de nuit"), bar,
+      el("h1", { style: "font-size:28px" }, "Tu veilles sur ton mari de nuit."),
+      partner ? el("p", { class: "muted" }, `${partner.name} dort tranquille. Pour gagner, vous devez être les deux derniers.`) : null);
   }
 
   if (NIGHT_PROMPTS[role]) {
@@ -380,22 +451,20 @@ function screenNightAction() {
       return el("section", { class: "screen" }, bleed(IMG.gardien, "Le Gardien des byéri serre son reliquaire"), bar,
         el("h1", { style: "font-size:28px" }, "Le reliquaire a déjà servi."), el("p", { class: "muted" }, "Repose-toi cette nuit."));
     }
-    const pool = role === "marabout" || role === "gardien" ? living : others;
+    let pool = role === "marabout" || role === "gardien" ? living : others;
+    if (role === "gourou") pool = others.filter((p) => !(me.secte || []).some((x) => x.id === p.id));
     const forbidden = na.forbidden;
     const chosen = na.choice && na.choice !== "skip" ? playerById(na.choice) : null;
+    const image = { gardien: "gardien", chauffeur: "chauffeur", femme: "femme", gourou: "gourou" }[role] || "nuit";
     return el("section", { class: "screen" },
-      bleed(IMG[role === "gardien" ? "gardien" : "nuit"], role === "gardien" ? "Le Gardien des byéri serre son reliquaire" : "La rue du quartier la nuit", true), bar,
+      bleed(IMG[image], image === "nuit" ? "La rue du quartier la nuit" : "Illustration du rôle", true), bar,
       el("h1", { style: "font-size:28px" }, title),
       el("p", { class: "muted small" }, help),
-      pickGrid(pool, {
-        selected: na.choice,
-        label: title,
-        disabled: (p) => p.id === forbidden,
-        onPick: (p) => send("night", { target: p.id }),
-      }),
+      pickGrid(pool, { selected: na.choice, label: title, disabled: (p) => p.id === forbidden, onPick: (p) => send("night", { target: p.id }) }),
       forbidden ? el("p", { class: "small muted" }, `Pas ${playerById(forbidden)?.name} : déjà choisi la nuit dernière.`) : null,
       role === "gardien" ? el("button", { class: "btn ghost", type: "button", "aria-pressed": String(na.choice === "skip"), onclick: () => send("night", { target: "skip" }) }, na.choice === "skip" ? "Tu gardes le reliquaire cette nuit" : "Garder le reliquaire pour plus tard") : null,
-      chosen ? el("p", { class: "small", style: "font-weight:600;color:var(--lamp)" }, `Choix enregistré : ${chosen.name}. Tu peux changer jusqu'à la fin.`) : null);
+      chosen ? el("p", { class: "small", style: "font-weight:600;color:var(--lamp)" }, `Choix enregistré : ${chosen.name}. Tu peux changer jusqu'à la fin.`) : null,
+      role === "gourou" && (me.secte || []).length ? teamChannel("secteChat", "Canal de la secte", na.secteChat, "secteChat", "var(--lamp)") : null);
   }
 
   return el("section", { class: "screen" },
@@ -403,6 +472,7 @@ function screenNightAction() {
     el("h1", { style: "font-size:30px" }, "Le quartier dort."),
     el("p", { class: "muted" }, role === "pasteur"
       ? "Rien à faire cette nuit. Ton sermon se garde pour un vote du jour."
+      : role === "chasseur" ? "Rien à faire cette nuit. Ton fusil est chargé, au cas où."
       : "Rien à faire cette nuit. Le chat de nuit commence juste après."));
 }
 
@@ -425,26 +495,48 @@ function screenNightChat() {
     S.me.alive ? composer("nightMsg", "Écris une rumeur…", (text) => send("chat", { text })) : null);
 }
 
+function deathRow(d) {
+  const p = playerById(d.id) || d;
+  return el("div", { class: "row" }, avatar(p), el("div", {},
+    el("h2", { style: "font-size:21px" }, (CAUSE[d.cause] || CAUSE.ndoki)(d.name)),
+    el("p", { class: "small muted" }, `C'était : ${roleName(d.role)}`)));
+}
+
 function screenMorning() {
   const m = S.morning;
-  const v = m.victim;
-  const victim = v && playerById(v.id);
+  const fire = m.deaths.some((d) => d.cause === "feu");
+  const image = fire ? IMG.incendie : m.deaths.length ? IMG.mange : IMG.maquis;
   return el("section", { class: "screen" },
-    v ? bleed(IMG.mange, "Une chaise vide, une assiette renversée et des plumes de hibou devant une maison") : bleed(IMG.maquis, "Le maquis du quartier au matin"),
+    bleed(image, fire ? "Une maison du quartier encore fumante" : m.deaths.length ? "Une chaise vide et des plumes de hibou devant une maison" : "Le maquis du quartier au matin"),
     phaseBar(`Jour ${S.night} · matin`),
-    v
-      ? el("div", { class: "row" }, avatar(victim || v), el("div", {}, el("h2", { style: "font-size:24px" }, `Les Ndoki ont mangé ${v.name}`), el("p", { class: "small muted" }, `C'était : ${roleName(v.role)}`)))
-      : el("h2", { style: "font-size:26px" }, "Personne n'a été mangé cette nuit."),
-    m.saved ? el("div", { class: "card" }, el("b", {}, "Une protection a agi cette nuit."), el("p", { class: "small muted" }, "Quelqu'un aurait dû mourir, mais a été protégé.")) : null,
+    m.deaths.length ? el("div", { class: "stack" }, m.deaths.map(deathRow)) : el("h2", { style: "font-size:26px" }, "Personne n'est mort cette nuit."),
+    m.saved ? el("div", { class: "card" }, el("b", {}, "Une protection a agi cette nuit."), el("p", { class: "small muted" }, "Quelqu'un a été épargné.")) : null,
     m.chefDied ? el("p", { class: "small", style: "font-weight:600" }, "Le Chef de quartier n'est plus là : le village va en élire un nouveau.") : null,
     m.vision ? el("div", { class: "card", style: "background:var(--night);color:var(--moon)" },
       el("p", { class: "small", style: "color:var(--lamp);font-weight:700" }, "Ta vision, rien que pour toi"),
       el("p", { style: "font-size:17px" }, el("b", {}, m.vision.name), m.vision.blurry
-        ? ` est du camp ${m.vision.camp === "ndoki" ? "des Ndoki" : m.vision.camp === "seul" ? "solitaire" : "du village"}. La vision était floue.`
+        ? ` est du camp ${({ ndoki: "des Ndoki", seul: "solitaire", pyromane: "solitaire", secte: "de la secte", couple: "du couple" })[m.vision.camp] || "du village"}. La vision était floue.`
         : ` est ${m.vision.role.name}.`)) : null,
+    ...(m.notes || []).map((t) => el("div", { class: "card", style: "background:var(--night);color:var(--moon)" },
+      el("p", { class: "small", style: "color:var(--lamp);font-weight:700" }, "Rien que pour toi"), el("p", {}, t))),
     m.arrested ? el("p", { class: "small muted" }, "Tu as passé la nuit au poste.") : null,
     el("div", { class: "grow" }),
-    el("p", { class: "center muted small" }, "Le maquis ouvre dans ", el("span", { "data-ends": S.endsAt, "data-plain": "1" }, "")));
+    el("p", { class: "center muted small" }, "La suite dans ", el("span", { "data-ends": S.endsAt, "data-plain": "1" }, "")));
+}
+
+function screenHunter() {
+  const h = S.hunter;
+  const living = S.players.filter((p) => p.alive);
+  return el("section", { class: "screen" },
+    bleed(IMG.chasseur, "Le Chasseur de brousse et son fusil"),
+    phaseBar("Le dernier coup de fusil"),
+    h.shot
+      ? (h.deaths.length ? el("div", { class: "stack" }, h.deaths.map(deathRow)) : el("h2", { style: "font-size:26px" }, `${h.hunter.name} a rangé son fusil sans tirer.`))
+      : h.isMe
+        ? [el("h1", { style: "font-size:28px" }, "Tu tombes… mais tu as encore une cartouche."),
+           pickGrid(living, { label: "Sur qui tirer", onPick: (p) => send("shoot", { target: p.id }) }),
+           el("button", { class: "btn ghost", type: "button", onclick: () => send("shoot", { target: "skip" }) }, "Ne pas tirer")]
+        : [el("h1", { style: "font-size:28px" }, `${h.hunter.name} était le Chasseur de brousse.`), el("p", { class: "muted" }, "Il épaule son fusil pour un dernier coup…")]);
 }
 
 function screenDebate() {
@@ -520,7 +612,8 @@ function screenResult() {
     el("div", { class: "center stack", style: "align-items:center" },
       e ? el("p", { class: "muted" }, "Le quartier chasse") : null,
       el("h1", { style: "font-size:42px" }, e ? e.name : "Personne ne part."),
-      e ? el("span", { class: `sign${e.role.camp === "ndoki" ? " red" : ""}`, style: "font-size:16px;padding:8px 14px" }, `C'était : ${e.role.name}`) : null,
+      e ? el("span", { class: `sign${["ndoki", "secte", "pyromane"].includes(e.role.camp) ? " red" : ""}`, style: "font-size:16px;padding:8px 14px" }, `C'était : ${e.role.name}`) : null,
+      ...(r.others || []).map((d) => el("p", { class: "small", style: "font-weight:600" }, `${(CAUSE[d.cause] || CAUSE.chagrin)(d.name)} (${roleName(d.role)}).`)),
       r.note ? el("p", { class: "small muted" }, r.note) : null,
       r.bouc ? el("p", { style: "font-weight:700;color:var(--lamp)" }, "Le Bouc émissaire voulait justement être chassé : il gagne seul !") : null),
     el("div", { class: "grow" }),
@@ -531,6 +624,10 @@ const WIN = {
   village: ["Victoire du village", "Le quartier dort tranquille.", IMG.village, "Les habitants dansent au lever du soleil"],
   ndoki: ["Victoire des Ndoki", "Le quartier a été mangé.", IMG.ndokiWin, "Les Ndoki satisfaites autour d'une grande marmite"],
   bouc: ["Victoire du Bouc émissaire", "Il voulait être chassé. C'est fait.", IMG.bouc, "Le Bouc émissaire et sa chèvre"],
+  secte: ["Victoire de la secte", "Tout le quartier a accepté la richesse.", IMG.secteWin, "La secte célèbre autour des billets et des roses"],
+  pyromane: ["Victoire du Pyromane", "Il ne reste que des cendres.", IMG.pyroWin, "Le Pyromane seul au lever du soleil"],
+  couple: ["Victoire du couple de nuit", "Ils sont les deux derniers du quartier.", IMG.coupleWin, "La Femme de nuit et son mari au clair de lune"],
+  personne: ["Personne ne gagne", "Le quartier est vide.", IMG.nuit, "La rue du quartier, vide, la nuit"],
 };
 
 function screenEnd() {
@@ -553,28 +650,29 @@ function screenEnd() {
 
 function screenBilan() {
   const b = ui.bilan;
-  const list = (items) => el("ul", {}, items.map((t) => el("li", {}, t)));
+  const list = (items) => el("ul", {}, items.filter(Boolean).map((t) => el("li", {}, t)));
   return el("section", { class: "screen bilan" },
     el("div", { class: "row" },
       el("button", { class: "link-btn", type: "button", "aria-label": "Retour", html: ICON.back, onclick: () => { ui.view = "game"; render(); } }),
       el("h1", { style: "font-size:30px" }, "Ton bilan")),
     el("h3", {}, "Les rôles"),
-    list(b.roles.map((r) => `${r.name} : ${r.role?.name}${r.alive ? "" : " (éliminé)"}`)),
+    list(b.roles.map((r) => `${r.name} : ${r.role?.name}${r.firstRole ? ` (au départ : ${r.firstRole.name})` : ""}${r.dream ? ` (se croyait ${r.dream.name})` : ""}${r.alive ? "" : ", éliminé"}`)),
+    b.couple ? el("p", { class: "small" }, `Couple de nuit : ${b.couple.femme} et ${b.couple.mari}.`) : null,
     b.elections.length ? el("h3", {}, "Les Chefs élus") : null,
     b.elections.length ? list(b.elections.map((e) => `${e.chef}${e.drawn ? " (tiré au sort)" : ""}. Votes : ${e.votes.map((v) => `${v.voter} → ${v.target}`).join(", ") || "aucun"}`)) : null,
-    ...b.nights.map((n) => [
-      el("h3", {}, `Nuit ${n.night}`),
-      list([
-        `Ndoki : ${n.ndokiVotes.map((v) => `${v.ndoki} → ${v.target}`).join(", ") || "aucun choix"}`,
-        n.victim ? `Victime : ${n.victim}` : n.saved ? "La victime a été protégée." : "Personne n'a été mangé.",
-        n.arrested ? `Au poste : ${n.arrested}` : null,
-        n.blessed ? `Béni par le Marabout : ${n.blessed}` : null,
-        n.reliquary ? `Protégé par le reliquaire : ${n.reliquary}` : null,
-        n.vision ? `Vision de ${n.vision.nganga} : ${n.vision.target}${n.vision.blurry ? " (floue)" : ""}` : null,
-        `Pseudos : ${n.pseudos.map((p) => `${p.pseudo} = ${p.name}`).join(", ")}`,
-      ].filter(Boolean)),
-      n.chat.length ? list(n.chat.map((m) => `${m.pseudo} (${m.name}) : ${m.text}`)) : null,
-    ]).flat(),
+    ...b.nights.map((n) => n.hunt
+      ? [el("h3", {}, "Coup de fusil"), list([`${n.hunter} tire sur ${n.target || "personne"}.`, ...(n.deaths || []).map((d) => `Mort : ${d.name} (${d.cause})`)])]
+      : [
+        el("h3", {}, `Nuit ${n.night}`),
+        list([
+          n.arrested ? `Au poste : ${n.arrested}` : null,
+          `Ndoki : ${(n.ndokiVotes || []).map((v) => `${v.ndoki} → ${v.target}`).join(", ") || "aucun choix"}`,
+          ...(n.events || []),
+          (n.deaths || []).length ? `Morts : ${n.deaths.map((d) => `${d.name} (${d.cause})`).join(", ")}` : "Personne n'est mort.",
+          `Pseudos : ${(n.pseudos || []).map((p) => `${p.pseudo} = ${p.name}`).join(", ")}`,
+        ]),
+        (n.chat || []).length ? list(n.chat.map((m) => `${m.pseudo} (${m.name}) : ${m.text}`)) : null,
+      ]).flat(),
     ...b.days.map((d) => [
       el("h3", {}, `Vote du jour ${d.day}`),
       list([
@@ -605,7 +703,7 @@ function render() {
     const screens = {
       lobby: screenLobby, roles: screenRoles, election: screenElection, night_action: screenNightAction,
       night_chat: screenNightChat, morning: screenMorning, debate: screenDebate, vote: screenVote,
-      tiebreak: screenTiebreak, result: screenResult, end: screenEnd,
+      tiebreak: screenTiebreak, result: screenResult, end: screenEnd, hunter: screenHunter,
     };
     node = (screens[S.phase] || screenLobby)();
   }

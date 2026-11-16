@@ -249,6 +249,12 @@ label.field { display: flex; flex-direction: column; gap: 8px; font-weight: 600;
 .camp-village { color: var(--green-2); }
 .camp-ndoki { color: var(--red-soft); }
 .camp-seul { color: var(--mist); }
+.camp-pyromane { color: #ff9f4a; }
+.camp-secte { color: #e8b4ff; }
+.camp-couple { color: #9ec7ff; }
+.is-day .camp-pyromane { color: #b35a12; }
+.is-day .camp-secte { color: #7d3fa0; }
+.is-day .camp-couple { color: #2f5f9e; }
 .is-day .camp-ndoki { color: var(--red); }
 
 /* Bilan */

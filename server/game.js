@@ -9,7 +9,7 @@ const MIN_PLAYERS = 4;
 const MAX_PLAYERS = 10;
 const SCALE = Math.max(0.01, Number(process.env.TIME_SCALE) || 1); // shorter timers for tests
 
-// Durations in seconds (see the gameplay document v2).
+// Durations in seconds (see the gameplay document).
 const T = {
   roles: 25,
   election: 45,
@@ -20,6 +20,7 @@ const T = {
   vote: 60,
   tiebreak: 30,
   result: 12,
+  hunter: 25,
 };
 const CHAT_CHOICES = [60, 90, 120];
 
@@ -27,14 +28,26 @@ const ROLES = {
   ndoki: { name: "Ndoki", camp: "ndoki", power: "Chaque nuit, choisis avec les autres Ndoki un voisin à manger. Le jour, fais-toi passer pour un habitant." },
   nganga: { name: "Nganga", camp: "village", power: "Chaque nuit, consulte les esprits et découvre le rôle d'un joueur. Une vision sur cinq est floue : tu ne vois que son camp." },
   policier: { name: "Policier", camp: "village", power: "Chaque nuit, mets un joueur au poste : il ne peut ni agir ni lire le chat de nuit. Jamais le même deux nuits de suite." },
-  marabout: { name: "Marabout", camp: "village", power: "Chaque nuit, bénis un joueur pour le protéger des Ndoki. Jamais le même deux nuits de suite." },
-  pasteur: { name: "Pasteur", camp: "village", power: "Une fois par partie, pendant un vote, lance ton sermon : le vote recommence à zéro." },
+  marabout: { name: "Marabout", camp: "village", power: "Chaque nuit, bénis un joueur : il est protégé de tout ce qui arrive la nuit (Ndoki, feu, secte). Jamais le même deux nuits de suite." },
+  pasteur: { name: "Pasteur", camp: "village", power: "Une fois par partie, pendant un vote, lance ton sermon : le vote recommence à zéro. La secte ne peut pas t'acheter, et si elle essaie, tu découvres le Gourou." },
   gardien: { name: "Gardien des byéri", camp: "village", power: "Une fois par partie, protège un joueur pour une nuit avec le reliquaire." },
+  chasseur: { name: "Chasseur de brousse", camp: "village", power: "Quand tu meurs, de jour comme de nuit, tu tires un dernier coup de fusil sur le joueur de ton choix." },
+  chauffeur: { name: "Chauffeur de clando", camp: "village", power: "Chaque nuit, emmène un joueur faire un tour : il n'est pas chez lui, les Ndoki, le feu et la secte le ratent. Mais si tu embarques un Ndoki, il te mange." },
+  ivrogne: { name: "Ivrogne du maquis", camp: "village", power: "Tu croyais avoir un pouvoir, mais tu avais surtout bu. Tes actions de nuit ne servaient à rien." },
   bouc: { name: "Bouc émissaire", camp: "seul", power: "Aucun pouvoir. Tu gagnes seul si le village te chasse au vote du jour." },
+  pyromane: { name: "Pyromane", camp: "pyromane", power: "Chaque nuit, arrose d'essence une maison, ou mets le feu : toutes les maisons arrosées brûlent. Tu gagnes si tu es le dernier debout." },
+  gourou: { name: "Gourou des Rose-Croix", camp: "secte", power: "Chaque nuit, propose la richesse à un joueur pour le faire entrer dans la secte. La secte gagne si elle reste seule dans le quartier." },
+  adepte: { name: "Adepte de la secte", camp: "secte", power: "Tu as accepté la richesse. Aide la secte à rester seule dans le quartier. Si le Gourou meurt, le plus ancien Adepte prend sa place." },
+  femme: { name: "Femme de nuit", camp: "couple", power: "La première nuit, choisis ton mari de nuit. Vous gagnez si vous êtes les deux derniers du quartier. Si l'un de vous meurt, l'autre meurt de chagrin." },
   habitant: { name: "Habitant", camp: "village", power: "Aucun pouvoir. Écoute les rumeurs de la nuit, débats au maquis et trouve les Ndoki." },
 };
-const SECONDARY = ["policier", "marabout", "pasteur", "gardien", "bouc"];
+// Roles drawn at random besides the Ndoki and the Nganga, with the minimum number of players.
+const SECONDARY = [
+  ["policier", 4], ["marabout", 4], ["pasteur", 4], ["gardien", 4], ["bouc", 5], ["chasseur", 4],
+  ["chauffeur", 5], ["ivrogne", 5], ["femme", 5], ["pyromane", 6], ["gourou", 7],
+];
 const SECONDARY_CHANCE = { 4: 0.05, 5: 0.1, 6: 0.15, 7: 0.22, 8: 0.3, 9: 0.38, 10: 0.45 };
+const IVROGNE_DREAMS = ["nganga", "policier", "marabout"];
 
 const PSEUDOS = [
   "Le Taximan", "La Mama", "Le Vendeur de brochettes", "La Coiffeuse", "Le Boutiquier",
@@ -79,10 +92,20 @@ function cleanText(value) {
 const alive = (room) => [...room.players.values()].filter((p) => p.alive);
 const byRole = (room, role) => alive(room).filter((p) => p.role === role);
 const nameOf = (room, id) => room.players.get(id)?.name ?? "?";
+const isSecte = (p) => p.role === "gourou" || p.role === "adepte";
 
 function roleInfo(role) {
   return role ? { key: role, ...ROLES[role] } : null;
 }
+
+// The role a player believes they have: the Ivrogne dreams of a power role until he dies.
+function shownRole(room, p) {
+  if (p.role === "ivrogne" && p.alive && room.phase !== "end") return roleInfo(p.dream);
+  return roleInfo(p.role);
+}
+
+// The power a player actually uses at night (the Ivrogne acts like his dream, without effect).
+const nightRole = (p) => (p.role === "ivrogne" ? p.dream : p.role);
 
 /* ---------------- roles ---------------- */
 
@@ -93,11 +116,19 @@ function ndokiCount(n) {
 }
 
 function drawRoles(n) {
+  // Tests can force a set of roles, e.g. FORCE_ROLES=pyromane,gourou,femme
+  if (process.env.FORCE_ROLES) {
+    const forced = process.env.FORCE_ROLES.split(",").filter((r) => ROLES[r]).slice(0, n - ndokiCount(n) - 1);
+    const roles = [...Array(ndokiCount(n)).fill("ndoki"), "nganga", ...forced];
+    while (roles.length < n) roles.push("habitant");
+    return shuffle(roles);
+  }
   const roles = Array(ndokiCount(n)).fill("ndoki");
   roles.push("nganga");
   const free = n - roles.length;
   const chance = SECONDARY_CHANCE[n] ?? 0.45;
-  const drawn = SECONDARY.filter(() => crypto.randomInt(1000) < chance * 1000).slice(0, free);
+  const pool = shuffle(SECONDARY.filter(([, min]) => n >= min).map(([r]) => r));
+  const drawn = pool.filter(() => crypto.randomInt(1000) < chance * 1000).slice(0, free);
   roles.push(...drawn);
   while (roles.length < n) roles.push("habitant");
   return shuffle(roles);
@@ -152,10 +183,17 @@ function resetGame(room) {
   room.gardienUsed = false;
   room.lastJail = null;
   room.lastBless = null;
+  room.doused = new Set();
+  room.couple = null; // { femme, mari }
+  room.secteOrder = []; // join order, to pick the next Gourou
+  room.secteNotes = new Map(); // playerId -> private notes for the morning
+  room.hunters = []; // Chasseurs who died and still have to shoot
   room.log = { nights: [], days: [], elections: [] };
   for (const p of room.players.values()) {
     p.alive = true;
     p.role = null;
+    p.firstRole = null;
+    p.dream = null;
     p.ready = false;
     p.bilanSeen = false;
   }
@@ -184,7 +222,12 @@ function startGame(room) {
   const players = [...room.players.values()];
   resetGame(room);
   const roles = drawRoles(players.length);
-  players.forEach((p, i) => (p.role = roles[i]));
+  players.forEach((p, i) => {
+    p.role = roles[i];
+    p.firstRole = roles[i];
+    if (p.role === "ivrogne") p.dream = pick(IVROGNE_DREAMS);
+    if (p.role === "gourou") room.secteOrder.push(p.id);
+  });
   setPhase(room, "roles", T.roles, () => startElection(room, () => startNight(room)));
 }
 
@@ -216,10 +259,12 @@ function finishElection(room) {
 function startNight(room) {
   room.night = (room.night || 0) + 1;
   const pseudos = shuffle(PSEUDOS);
+  room.secteNotes = new Map();
   room.nightState = {
-    actions: new Map(), // playerId -> targetId (or "skip")
+    actions: new Map(), // playerId -> targetId, "skip" or "ignite"
     ndokiVotes: new Map(),
     ndokiChat: [],
+    secteChat: [],
     chat: [],
     pseudos: new Map(alive(room).map((p, i) => [p.id, pseudos[i]])),
     arrested: null,
@@ -227,12 +272,15 @@ function startNight(room) {
   setPhase(room, "night_action", T.action, () => startNightChat(room));
 }
 
+// Players who still have a night decision to make (the phase ends early when nobody is left).
 function actionRoles(room) {
-  // Players who still have a night decision to make.
+  const ns = room.nightState;
   return alive(room).filter((p) => {
-    if (p.role === "ndoki") return !room.nightState.ndokiVotes.has(p.id);
-    if (p.role === "gardien") return !room.gardienUsed && !room.nightState.actions.has(p.id);
-    if (["nganga", "policier", "marabout"].includes(p.role)) return !room.nightState.actions.has(p.id);
+    const r = nightRole(p);
+    if (r === "ndoki") return !ns.ndokiVotes.has(p.id);
+    if (r === "gardien") return !room.gardienUsed && !ns.actions.has(p.id);
+    if (r === "femme") return !room.couple && room.night === 1 && !ns.actions.has(p.id);
+    if (["nganga", "policier", "marabout", "chauffeur", "pyromane", "gourou"].includes(r)) return !ns.actions.has(p.id);
     return false;
   });
 }
@@ -247,76 +295,185 @@ function startNightChat(room) {
   setPhase(room, "night_chat", room.settings.chatSecs, () => resolveNight(room));
 }
 
+function kill(room, id, cause, deaths) {
+  const p = room.players.get(id);
+  if (!p || !p.alive) return;
+  p.alive = false;
+  deaths.push({ id, cause });
+  if (p.role === "chasseur") room.hunters.push(id);
+  if (id === room.chefId) room.chefId = null;
+  // Love is stronger than death: the other half of the couple follows.
+  const c = room.couple;
+  if (c && (id === c.femme || id === c.mari)) kill(room, id === c.femme ? c.mari : c.femme, "chagrin", deaths);
+  // A dead Gourou is replaced by the oldest living Adepte.
+  if (p.role === "gourou") {
+    const next = room.secteOrder.map((x) => room.players.get(x)).find((x) => x && x.alive && x.role === "adepte");
+    if (next) {
+      next.role = "gourou";
+      room.secteNotes.set(next.id, [...(room.secteNotes.get(next.id) || []), "Le Gourou est mort : tu deviens le nouveau Gourou de la secte."]);
+    }
+  }
+}
+
+function note(room, id, text) {
+  room.secteNotes.set(id, [...(room.secteNotes.get(id) || []), text]);
+}
+
 function resolveNight(room) {
   const ns = room.nightState;
-  const free = (p) => p.id !== ns.arrested;
-  const actionOf = (role) => {
-    const p = byRole(room, role)[0];
-    if (!p || !free(p)) return null;
-    const t = ns.actions.get(p.id);
+  const free = (p) => p && p.alive && p.id !== ns.arrested;
+  const actor = (role) => alive(room).find((p) => p.role === role && free(p));
+  const act = (p) => {
+    const t = p && ns.actions.get(p.id);
     return t && t !== "skip" ? t : null;
   };
+  const deaths = [];
+  const log = { night: room.night, arrested: ns.arrested && nameOf(room, ns.arrested), events: [] };
 
-  // 1. Protections (the arrest is already applied through free()).
-  const blessed = actionOf("marabout");
+  // 1. The Chauffeur takes someone out for the night.
+  const chauffeur = actor("chauffeur");
+  const passenger = act(chauffeur);
+  const away = (id) => id && id === passenger;
+  if (passenger) {
+    log.events.push(`${nameOf(room, chauffeur.id)} (Chauffeur) emmène ${nameOf(room, passenger)} faire un tour.`);
+    note(room, passenger, "Le Chauffeur de clando t'a fait faire un tour cette nuit : tu n'étais pas chez toi.");
+  }
+
+  // 2. Protections.
+  const blessed = act(actor("marabout"));
   room.lastBless = blessed;
-  const gardien = byRole(room, "gardien")[0];
   let reliquary = null;
-  if (gardien && free(gardien) && !room.gardienUsed) {
-    const t = ns.actions.get(gardien.id);
-    if (t && t !== "skip") {
-      reliquary = t;
-      room.gardienUsed = true;
+  const gardien = actor("gardien");
+  if (gardien && !room.gardienUsed && act(gardien)) {
+    reliquary = act(gardien);
+    room.gardienUsed = true;
+  }
+  if (blessed) log.events.push(`Le Marabout bénit ${nameOf(room, blessed)}.`);
+  if (reliquary) log.events.push(`Le Gardien protège ${nameOf(room, reliquary)} avec le reliquaire.`);
+  const safe = (id) => id === blessed || id === reliquary;
+  let saved = false;
+
+  // 3. The Femme de nuit chooses her husband (first night only; at random if she forgot).
+  const femme = alive(room).find((p) => p.role === "femme");
+  if (femme && !room.couple && room.night === 1) {
+    let mari = free(femme) ? act(femme) : null;
+    if (!mari || !room.players.get(mari)?.alive || mari === femme.id) mari = pick(alive(room).filter((p) => p.id !== femme.id)).id;
+    room.couple = { femme: femme.id, mari };
+    note(room, mari, `Une Femme de nuit t'a choisi : tu es maintenant le mari de nuit de ${femme.name}. Votre but : être les deux derniers du quartier. Si l'un meurt, l'autre meurt de chagrin.`);
+    note(room, femme.id, `${nameOf(room, mari)} est maintenant ton mari de nuit.`);
+    log.events.push(`La Femme de nuit ${femme.name} choisit ${nameOf(room, mari)} comme mari de nuit.`);
+  }
+  const inCouple = (id) => room.couple && (id === room.couple.femme || id === room.couple.mari);
+
+  // 4. The secte tries to buy someone.
+  const gourou = actor("gourou");
+  const offer = act(gourou);
+  if (offer) {
+    const t = room.players.get(offer);
+    let outcome;
+    if (!t || !t.alive || isSecte(t)) outcome = null;
+    else if (away(offer)) outcome = `${t.name} n'était pas chez lui.`;
+    else if (safe(offer)) { outcome = `${t.name} était protégé cette nuit.`; saved = true; }
+    else if (t.role === "ndoki" || t.role === "pyromane" || inCouple(offer)) outcome = `${t.name} a refusé la richesse.`;
+    else if (t.role === "pasteur") {
+      outcome = `${t.name} a refusé la richesse.`;
+      note(room, t.id, `La secte a essayé de t'acheter cette nuit. Le Gourou, c'est ${gourou.name}.`);
+    } else {
+      t.role = "adepte";
+      room.secteOrder.push(t.id);
+      outcome = `${t.name} a accepté la richesse : il entre dans la secte.`;
+      note(room, t.id, "Le Gourou t'a proposé la richesse et tu as accepté : tu es maintenant Adepte de la secte.");
+    }
+    if (outcome) {
+      for (const s of alive(room).filter(isSecte)) if (s.id !== offer) note(room, s.id, outcome);
+      log.events.push(`Le Gourou ${gourou.name} vise ${nameOf(room, offer)} : ${outcome}`);
     }
   }
 
-  // 2. Attack: the target with the most votes among free Ndoki; a tie means nobody.
+  // 5. Ndoki attack: the target with the most votes among free Ndoki; a tie means nobody.
   const counts = new Map();
   for (const [ndokiId, target] of ns.ndokiVotes) {
-    if (ndokiId === ns.arrested) continue;
+    if (ndokiId === ns.arrested || !room.players.get(ndokiId)?.alive) continue;
     if (!room.players.get(target)?.alive) continue;
     counts.set(target, (counts.get(target) || 0) + 1);
   }
   const max = Math.max(0, ...counts.values());
   const top = [...counts].filter(([, c]) => c === max);
   const target = max > 0 && top.length === 1 ? top[0][0] : null;
-  const saved = !!target && (target === blessed || target === reliquary);
-  const victim = target && !saved ? target : null;
-  if (victim) room.players.get(victim).alive = false;
-
-  // 3. Vision of the Nganga.
-  let vision = null;
-  const nganga = byRole(room, "nganga")[0] || [...room.players.values()].find((p) => p.role === "nganga" && p.id === victim);
-  const seen = nganga && free(nganga) && ns.actions.get(nganga.id);
-  if (seen && seen !== "skip") {
-    const t = room.players.get(seen);
-    const blurry = rand(5) === 0;
-    vision = { ngangaId: nganga.id, targetId: seen, name: t.name, blurry, role: blurry ? null : roleInfo(t.role), camp: ROLES[t.role].camp };
+  log.ndokiVotes = [...ns.ndokiVotes].map(([n, t]) => ({ ndoki: nameOf(room, n), target: nameOf(room, t) }));
+  if (target) {
+    if (away(target)) log.events.push(`Les Ndoki visent ${nameOf(room, target)}, mais il n'était pas chez lui.`);
+    else if (safe(target)) { saved = true; log.events.push(`Les Ndoki visent ${nameOf(room, target)}, protégé cette nuit.`); }
+    else kill(room, target, "ndoki", deaths);
   }
 
-  const chefDied = victim && victim === room.chefId;
-  room.morning = { victim, saved, vision, arrested: ns.arrested };
-  room.log.nights.push({
-    night: room.night,
-    arrested: ns.arrested && nameOf(room, ns.arrested),
-    blessed: blessed && nameOf(room, blessed),
-    reliquary: reliquary && nameOf(room, reliquary),
-    ndokiVotes: [...ns.ndokiVotes].map(([n, t]) => ({ ndoki: nameOf(room, n), target: nameOf(room, t) })),
-    victim: victim && nameOf(room, victim),
-    saved,
-    vision: vision && { nganga: nameOf(room, vision.ngangaId), target: vision.name, blurry: vision.blurry },
-    pseudos: [...ns.pseudos].map(([id, pseudo]) => ({ pseudo, name: nameOf(room, id) })),
-    chat: ns.chat.map((m) => ({ pseudo: m.pseudo, name: nameOf(room, m.from), text: m.text })),
-  });
+  // 6. The Pyromane: pour petrol on a house, or set every soaked house on fire.
+  const pyro = actor("pyromane");
+  const pyroAct = pyro && ns.actions.get(pyro.id);
+  if (pyroAct === "ignite") {
+    const houses = [...room.doused].filter((id) => room.players.get(id)?.alive);
+    log.events.push(`Le Pyromane ${pyro.name} met le feu (${houses.map((id) => nameOf(room, id)).join(", ") || "aucune maison arrosée"}).`);
+    for (const id of houses) {
+      if (away(id)) continue;
+      if (safe(id)) { saved = true; continue; }
+      kill(room, id, "feu", deaths);
+    }
+    room.doused.clear();
+  } else if (pyroAct && pyroAct !== "skip") {
+    room.doused.add(pyroAct);
+    log.events.push(`Le Pyromane ${pyro.name} arrose la maison de ${nameOf(room, pyroAct)}.`);
+  }
+
+  // 7. A Chauffeur who picked up a Ndoki gets eaten by his passenger.
+  if (chauffeur && passenger && room.players.get(passenger)?.role === "ndoki" && chauffeur.alive) {
+    if (safe(chauffeur.id)) saved = true;
+    else kill(room, chauffeur.id, "client", deaths);
+  }
+
+  // 8. Visions: the Nganga's, and the Ivrogne's dream of one.
+  let vision = null;
+  const seer = [...room.players.values()].find((p) => p.role === "nganga" && p.id !== ns.arrested && (p.alive || deaths.some((d) => d.id === p.id)));
+  const seen = seer && act(seer);
+  if (seen) {
+    const t = room.players.get(seen);
+    const blurry = rand(5) === 0;
+    vision = { ngangaId: seer.id, targetId: seen, name: t.name, blurry, role: blurry ? null : roleInfo(t.role), camp: ROLES[t.role].camp };
+    log.events.push(`Vision du Nganga ${seer.name} : ${t.name}${blurry ? " (floue)" : ""}.`);
+  }
+  const drunk = alive(room).concat(deaths.map((d) => room.players.get(d.id))).find((p) => p.role === "ivrogne" && p.dream === "nganga");
+  const drunkSeen = drunk && drunk.id !== ns.arrested && act(drunk);
+  const fakeVision = drunkSeen && {
+    ngangaId: drunk.id, targetId: drunkSeen, name: nameOf(room, drunkSeen), blurry: false,
+    role: roleInfo(pick(["habitant", "ndoki", "policier", "marabout", "habitant", "chasseur"])),
+  };
+
+  room.morning = { deaths, saved, vision, fakeVision, arrested: ns.arrested };
+  log.deaths = deaths.map((d) => ({ name: nameOf(room, d.id), cause: d.cause }));
+  log.vision = vision && { nganga: nameOf(room, vision.ngangaId), target: vision.name, blurry: vision.blurry };
+  log.pseudos = [...ns.pseudos].map(([id, pseudo]) => ({ pseudo, name: nameOf(room, id) }));
+  log.chat = ns.chat.map((m) => ({ pseudo: m.pseudo, name: nameOf(room, m.from), text: m.text }));
+  room.log.nights.push(log);
   room.lastNightChat = ns.chat.map((m) => ({ pseudo: m.pseudo, text: m.text }));
   room.nightState = null;
-  if (chefDied) room.chefId = null;
 
-  setPhase(room, "morning", T.morning, () => {
-    if (checkWin(room)) return;
+  setPhase(room, "morning", T.morning, () => afterDeaths(room, () => {
     if (!room.chefId) startElection(room, () => startDebate(room));
     else startDebate(room);
-  });
+  }));
+}
+
+// After any deaths: let dead Chasseurs shoot, then check who wins, then go on.
+function afterDeaths(room, next) {
+  if (room.hunters.length) {
+    const hunterId = room.hunters.shift();
+    room.hunt = { hunterId, shot: null };
+    return setPhase(room, "hunter", T.hunter, () => {
+      room.hunt = null;
+      afterDeaths(room, next);
+    });
+  }
+  if (checkWin(room)) return;
+  next();
 }
 
 function startDebate(room) {
@@ -332,16 +489,18 @@ function startVote(room) {
 function finishVote(room) {
   const v = room.vote;
   const counts = new Map();
-  for (const target of v.intents.values()) counts.set(target, (counts.get(target) || 0) + 1);
+  for (const [voter, target] of v.intents) {
+    if (!room.players.get(voter)?.alive || !room.players.get(target)?.alive) continue;
+    counts.set(target, (counts.get(target) || 0) + 1);
+  }
   const max = Math.max(0, ...counts.values());
   const tied = [...counts].filter(([, c]) => c === max).map(([id]) => id);
-  const day = {
+  room.log.days.push({
     day: room.night,
     final: [...v.intents].map(([voter, target]) => ({ voter: nameOf(room, voter), target: nameOf(room, target) })),
     history: v.history,
     sermon: v.sermon,
-  };
-  room.log.days.push(day);
+  });
   if (max === 0) return eliminate(room, null, "Personne n'a voté : personne ne quitte le quartier.");
   if (tied.length === 1) return eliminate(room, tied[0]);
   const chef = room.chefId && room.players.get(room.chefId);
@@ -353,33 +512,53 @@ function finishVote(room) {
 function eliminate(room, id, note) {
   room.tiebreak = null;
   const day = room.log.days[room.log.days.length - 1];
-  if (id) room.players.get(id).alive = false;
+  const deaths = [];
+  if (id) kill(room, id, "vote", deaths);
   if (day) day.eliminated = id ? nameOf(room, id) : null;
-  room.result = { eliminated: id, note: note || null };
+  room.result = { eliminated: id, note: note || null, others: deaths.filter((d) => d.id !== id) };
   if (id && room.players.get(id).role === "bouc") {
     room.winner = "bouc";
     return setPhase(room, "result", T.result, () => endGame(room));
   }
-  const chefDied = id && id === room.chefId;
-  if (chefDied) room.chefId = null;
-  setPhase(room, "result", T.result, () => {
-    if (checkWin(room)) return;
+  setPhase(room, "result", T.result, () => afterDeaths(room, () => {
     if (!room.chefId) startElection(room, () => startNight(room));
     else startNight(room);
-  });
+  }));
+}
+
+// Which side each living player is on when counting who is left.
+function sideOf(room, p) {
+  const c = room.couple;
+  if (c && (p.id === c.femme || p.id === c.mari)) return "couple";
+  if (p.role === "ndoki") return "ndoki";
+  if (isSecte(p)) return "secte";
+  if (p.role === "pyromane") return "pyromane";
+  return "village"; // the Bouc émissaire counts as a harmless neighbour
 }
 
 function checkWin(room) {
   const living = alive(room);
-  const ndoki = living.filter((p) => p.role === "ndoki").length;
-  if (ndoki === 0) room.winner = "village";
-  else if (ndoki >= living.length - ndoki) room.winner = "ndoki";
+  if (!living.length) {
+    room.winner = "personne";
+    endGame(room);
+    return true;
+  }
+  const sides = new Map();
+  for (const p of living) sides.set(sideOf(room, p), (sides.get(sideOf(room, p)) || 0) + 1);
+  const only = sides.size === 1 ? [...sides.keys()][0] : null;
+  if (only) room.winner = only;
+  else {
+    // A team at parity with only harmless neighbours left wins: they can no longer be outvoted.
+    const village = sides.get("village") || 0;
+    const threats = [...sides.keys()].filter((s) => s !== "village");
+    if (threats.length === 1 && ["ndoki", "secte"].includes(threats[0]) && sides.get(threats[0]) >= village) room.winner = threats[0];
+    if (threats.length === 1 && threats[0] === "pyromane" && living.length === 2) room.winner = "pyromane";
+  }
   if (room.winner) endGame(room);
   return !!room.winner;
 }
 
 function endGame(room) {
-  if (!room.winner) checkWin(room);
   clearTimeout(room.timer);
   room.phase = "end";
   room.endsAt = null;
@@ -434,24 +613,38 @@ const handlers = {
     if (room.phase !== "night_action" || !me.alive) return;
     const ns = room.nightState;
     const t = msg.target;
-    if (me.role === "ndoki") {
+    const r = nightRole(me);
+    if (r === "ndoki") {
       if (!isAliveTarget(room, t) || room.players.get(t).role === "ndoki") return "Choisis un voisin qui n'est pas Ndoki.";
       ns.ndokiVotes.set(me.id, t);
-    } else if (me.role === "nganga") {
+    } else if (r === "nganga" || r === "chauffeur") {
       if (!isAliveTarget(room, t, [me.id])) return;
       ns.actions.set(me.id, t);
-    } else if (me.role === "policier") {
-      if (t === room.lastJail) return "Tu as déjà mis ce joueur au poste la nuit dernière.";
+    } else if (r === "policier") {
+      if (t === room.lastJail && me.role === "policier") return "Tu as déjà mis ce joueur au poste la nuit dernière.";
       if (!isAliveTarget(room, t, [me.id])) return;
       ns.actions.set(me.id, t);
-    } else if (me.role === "marabout") {
-      if (t === room.lastBless) return "Tu as déjà béni ce joueur la nuit dernière.";
+    } else if (r === "marabout") {
+      if (t === room.lastBless && me.role === "marabout") return "Tu as déjà béni ce joueur la nuit dernière.";
       if (!isAliveTarget(room, t)) return;
       ns.actions.set(me.id, t);
-    } else if (me.role === "gardien") {
+    } else if (r === "gardien") {
       if (room.gardienUsed) return "Le reliquaire a déjà servi.";
       if (t === "skip") ns.actions.set(me.id, "skip");
       else if (isAliveTarget(room, t)) ns.actions.set(me.id, t);
+    } else if (r === "pyromane") {
+      if (t === "ignite") {
+        if (![...room.doused].some((id) => room.players.get(id)?.alive)) return "Aucune maison n'est encore arrosée.";
+        ns.actions.set(me.id, "ignite");
+      } else if (t === "skip") ns.actions.set(me.id, "skip");
+      else if (isAliveTarget(room, t, [me.id])) ns.actions.set(me.id, t);
+    } else if (r === "gourou") {
+      if (!isAliveTarget(room, t, [me.id]) || isSecte(room.players.get(t))) return "Choisis quelqu'un qui n'est pas encore dans la secte.";
+      ns.actions.set(me.id, t);
+    } else if (r === "femme") {
+      if (room.couple || room.night !== 1) return;
+      if (!isAliveTarget(room, t, [me.id])) return;
+      ns.actions.set(me.id, t);
     } else return;
     if (actionRoles(room).length === 0) endPhase(room);
   },
@@ -460,6 +653,12 @@ const handlers = {
     if (room.phase !== "night_action" || !me.alive || me.role !== "ndoki") return;
     const text = cleanText(msg.text);
     if (text) room.nightState.ndokiChat.push({ from: me.id, text });
+  },
+
+  secteChat(room, me, msg) {
+    if (room.phase !== "night_action" || !me.alive || !isSecte(me)) return;
+    const text = cleanText(msg.text);
+    if (text) room.nightState.secteChat.push({ from: me.id, text });
   },
 
   chat(room, me, msg) {
@@ -519,6 +718,22 @@ const handlers = {
     eliminate(room, msg.target, "Égalité : le Chef de quartier a tranché.");
   },
 
+  shoot(room, me, msg) {
+    if (room.phase !== "hunter" || !room.hunt || room.hunt.hunterId !== me.id || room.hunt.shot) return;
+    const deaths = [];
+    if (msg.target !== "skip") {
+      if (!isAliveTarget(room, msg.target)) return;
+      kill(room, msg.target, "fusil", deaths);
+    }
+    room.hunt.shot = msg.target;
+    room.hunt.deaths = deaths;
+    room.log.nights.push({ hunt: true, hunter: me.name, target: msg.target === "skip" ? null : nameOf(room, msg.target), deaths: deaths.map((d) => ({ name: nameOf(room, d.id), cause: d.cause })) });
+    // Show the shot for a few seconds, then continue.
+    clearTimeout(room.timer);
+    room.endsAt = Date.now() + secs(6);
+    room.timer = setTimeout(() => endPhase(room), secs(6));
+  },
+
   bilan(room, me) {
     if (room.phase !== "end") return;
     me.bilanSeen = true;
@@ -538,15 +753,21 @@ const handlers = {
 function bilan(room) {
   return {
     winner: room.winner,
+    couple: room.couple && { femme: nameOf(room, room.couple.femme), mari: nameOf(room, room.couple.mari) },
     roles: room.order.filter((id) => room.players.has(id)).map((id) => {
       const p = room.players.get(id);
-      return { name: p.name, role: roleInfo(p.role), alive: p.alive };
+      return { name: p.name, role: roleInfo(p.role), firstRole: p.firstRole !== p.role ? roleInfo(p.firstRole) : null, dream: p.dream && roleInfo(p.dream), alive: p.alive };
     }),
     elections: room.log.elections,
     nights: room.log.nights,
     days: room.log.days,
   };
 }
+
+const deathView = (room, d) => {
+  const p = room.players.get(d.id);
+  return { id: p.id, name: p.name, role: roleInfo(p.role), cause: d.cause };
+};
 
 function viewFor(room, me) {
   const players = room.order.filter((id) => room.players.has(id)).map((id) => {
@@ -577,11 +798,13 @@ function viewFor(room, me) {
       alive: me.alive,
       isHost: me.id === room.hostId,
       isChef: me.id === room.chefId,
-      role: roleInfo(me.role),
+      role: shownRole(room, me),
     },
   };
-  // Ndoki know each other from the start.
+  // Teams know each other: the Ndoki from the start, the secte as it grows, and the couple.
   if (me.role === "ndoki") view.me.mates = [...room.players.values()].filter((p) => p.role === "ndoki" && p.id !== me.id).map((p) => p.id);
+  if (isSecte(me)) view.me.secte = [...room.players.values()].filter((p) => isSecte(p) && p.id !== me.id).map((p) => ({ id: p.id, gourou: p.role === "gourou" }));
+  if (room.couple && (me.id === room.couple.femme || me.id === room.couple.mari)) view.me.partner = me.id === room.couple.femme ? room.couple.mari : room.couple.femme;
 
   switch (room.phase) {
     case "roles":
@@ -596,13 +819,21 @@ function viewFor(room, me) {
     }
     case "night_action": {
       const ns = room.nightState;
-      const na = { done: ns.actions.has(me.id) || ns.ndokiVotes.has(me.id), choice: ns.actions.get(me.id) || ns.ndokiVotes.get(me.id) || null };
-      if (me.role === "policier") na.forbidden = room.lastJail;
-      if (me.role === "marabout") na.forbidden = room.lastBless;
-      if (me.role === "gardien") na.used = room.gardienUsed;
+      const r = nightRole(me);
+      const na = { role: r, done: ns.actions.has(me.id) || ns.ndokiVotes.has(me.id), choice: ns.actions.get(me.id) || ns.ndokiVotes.get(me.id) || null };
+      if (r === "policier" && me.role === "policier") na.forbidden = room.lastJail;
+      if (r === "marabout" && me.role === "marabout") na.forbidden = room.lastBless;
+      if (r === "gardien") na.used = room.gardienUsed;
+      if (r === "femme") na.married = !!room.couple || room.night !== 1;
+      if (r === "pyromane") na.doused = [...room.doused].filter((id) => room.players.get(id)?.alive);
       if (me.role === "ndoki" && me.alive) {
         na.ndokiVotes = Object.fromEntries(ns.ndokiVotes);
         na.ndokiChat = ns.ndokiChat.map((m) => ({ name: nameOf(room, m.from), text: m.text, mine: m.from === me.id }));
+      }
+      if (isSecte(me) && me.alive) {
+        const g = alive(room).find((p) => p.role === "gourou");
+        na.gourouChoice = g ? ns.actions.get(g.id) || null : null;
+        na.secteChat = ns.secteChat.map((m) => ({ name: nameOf(room, m.from), text: m.text, mine: m.from === me.id }));
       }
       view.nightAction = na;
       break;
@@ -619,13 +850,24 @@ function viewFor(room, me) {
     }
     case "morning": {
       const m = room.morning;
-      const victim = m.victim && room.players.get(m.victim);
+      const vision = m.vision && m.vision.ngangaId === me.id ? m.vision : m.fakeVision && m.fakeVision.ngangaId === me.id ? m.fakeVision : null;
       view.morning = {
-        victim: victim ? { id: victim.id, name: victim.name, role: roleInfo(victim.role) } : null,
+        deaths: m.deaths.map((d) => deathView(room, d)),
         saved: m.saved,
-        vision: m.vision && m.vision.ngangaId === me.id ? m.vision : null,
+        vision,
+        notes: room.secteNotes.get(me.id) || [],
         arrested: m.arrested === me.id,
         chefDied: !room.chefId,
+      };
+      break;
+    }
+    case "hunter": {
+      const h = room.hunt;
+      view.hunter = {
+        hunter: { id: h.hunterId, name: nameOf(room, h.hunterId) },
+        isMe: h.hunterId === me.id,
+        shot: h.shot,
+        deaths: (h.deaths || []).map((d) => deathView(room, d)),
       };
       break;
     }
@@ -653,11 +895,20 @@ function viewFor(room, me) {
       break;
     case "result": {
       const e = room.result.eliminated && room.players.get(room.result.eliminated);
-      view.result = { eliminated: e ? { id: e.id, name: e.name, role: roleInfo(e.role) } : null, note: room.result.note, bouc: room.winner === "bouc" };
+      view.result = {
+        eliminated: e ? { id: e.id, name: e.name, role: roleInfo(e.role) } : null,
+        others: room.result.others.map((d) => deathView(room, d)),
+        note: room.result.note,
+        bouc: room.winner === "bouc",
+      };
       break;
     }
     case "end":
-      view.end = { winner: room.winner, bilanSeen: !!me.bilanSeen };
+      view.end = {
+        winner: room.winner,
+        couple: room.couple && [room.couple.femme, room.couple.mari],
+        bilanSeen: !!me.bilanSeen,
+      };
       break;
   }
   return view;
