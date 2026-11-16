@@ -53,7 +53,9 @@ const server = http.createServer((req, res) => {
     const ext = path.extname(full).toLowerCase();
     res.writeHead(200, {
       "Content-Type": TYPES[ext] || "application/octet-stream",
-      "Cache-Control": ext === ".html" ? "no-cache" : ext === ".jpg" ? "public, max-age=86400" : "public, max-age=3600",
+      // Pages, scripts and styles are always checked again, so a new version shows at once.
+      // Images are cached for a day, and their links carry a version number (?v=) that changes when they do.
+      "Cache-Control": [".html", ".js", ".css"].includes(ext) ? "no-cache" : "public, max-age=86400",
     });
     res.end(data);
   });
