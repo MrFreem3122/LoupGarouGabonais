@@ -78,6 +78,7 @@ function act(b) {
       break;
     case "night_chat":
       once("m", () => b.send({ type: "chat", text: `rumeur de ${b.name}` }));
+      if (s.nightChat.offer && s.nightChat.offer.status === "pending" && !s.nightChat.offer.locked) once("o", () => b.send({ type: "offer", accept: Math.random() < 0.6 }));
       break;
     case "debate":
       once("d", () => b.send({ type: "chat", text: `j'accuse quelqu'un (${b.name})` }));

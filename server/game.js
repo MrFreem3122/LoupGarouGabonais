@@ -36,7 +36,7 @@ const ROLES = {
   ivrogne: { name: "Ivrogne du maquis", camp: "village", power: "Tu croyais avoir un pouvoir, mais tu avais surtout bu. Tes actions de nuit ne servaient à rien." },
   bouc: { name: "Bouc émissaire", camp: "seul", power: "Aucun pouvoir. Tu gagnes seul si le village te chasse au vote du jour." },
   pyromane: { name: "Pyromane", camp: "pyromane", power: "Chaque nuit, arrose d'essence une maison, ou mets le feu : toutes les maisons arrosées brûlent. Tu gagnes si tu es le dernier debout." },
-  gourou: { name: "Gourou des Rose-Croix", camp: "secte", power: "Chaque nuit, propose la richesse à un joueur pour le faire entrer dans la secte. La secte gagne si elle reste seule dans le quartier." },
+  gourou: { name: "Gourou des Rose-Croix", camp: "secte", power: "Chaque nuit, propose la richesse à un joueur : libre à lui d'accepter et d'entrer dans la secte. La secte gagne si elle reste seule dans le quartier." },
   adepte: { name: "Adepte de la secte", camp: "secte", power: "Tu as accepté la richesse. Aide la secte à rester seule dans le quartier. Si le Gourou meurt, le plus ancien Adepte prend sa place." },
   femme: { name: "Femme de nuit", camp: "couple", power: "La première nuit, choisis ton mari de nuit. Vous gagnez si vous êtes les deux derniers du quartier. Si l'un de vous meurt, l'autre meurt de chagrin." },
   habitant: { name: "Habitant", camp: "village", power: "Aucun pouvoir. Écoute les rumeurs de la nuit, débats au maquis et trouve les Ndoki." },
@@ -51,7 +51,7 @@ const IVROGNE_DREAMS = ["nganga", "policier", "marabout"];
 
 const PSEUDOS = [
   "Le Taximan", "La Mama", "Le Vendeur de brochettes", "La Coiffeuse", "Le Boutiquier",
-  "La Tantine", "Le Chauffeur de clando", "La Vendeuse de manioc", "Le Mécanicien",
+  "La Tantine", "Le Laveur de voitures", "La Vendeuse de manioc", "Le Mécanicien",
   "Le Gardien de nuit", "La Couturière", "Le Vendeur d'unités", "La Vendeuse de beignets",
   "Le Tailleur", "Le Cordonnier", "La Pharmacienne", "Le Maçon", "La Restauratrice",
 ];
@@ -292,7 +292,38 @@ function startNightChat(room) {
   const jail = policier && ns.actions.get(policier.id);
   ns.arrested = jail && jail !== "skip" ? jail : null;
   room.lastJail = ns.arrested;
+  ns.offer = prepareOffer(room);
   setPhase(room, "night_chat", room.settings.chatSecs, () => resolveNight(room));
+}
+
+// The secte's offer is made during the night chat: the target chooses to accept or refuse.
+function prepareOffer(room) {
+  const ns = room.nightState;
+  const free = (p) => p && p.alive && p.id !== ns.arrested;
+  const act = (p) => {
+    const t = p && free(p) && ns.actions.get(p.id);
+    return t && t !== "skip" ? t : null;
+  };
+  const gourou = alive(room).find((p) => p.role === "gourou" && free(p));
+  const targetId = act(gourou);
+  const t = targetId && room.players.get(targetId);
+  if (!t || !t.alive || isSecte(t)) return null;
+  const offer = { gourou: gourou.id, target: t.id, status: "pending", locked: null };
+  const passenger = act(alive(room).find((p) => p.role === "chauffeur"));
+  const gardien = alive(room).find((p) => p.role === "gardien");
+  const protectedIds = [act(alive(room).find((p) => p.role === "marabout")), !room.gardienUsed ? act(gardien) : null];
+  if (t.id === ns.arrested || t.id === passenger) offer.status = "absent";
+  else if (protectedIds.includes(t.id)) offer.status = "protected";
+  else {
+    // Some players can never change side: they hear the offer but can only refuse.
+    const femme = alive(room).find((p) => p.role === "femme");
+    const couple = room.couple ? [room.couple.femme, room.couple.mari] : femme ? [femme.id, act(femme)] : [];
+    if (t.role === "ndoki") offer.locked = "Un Ndoki ne se vend pas.";
+    else if (t.role === "pyromane") offer.locked = "Le Pyromane ne travaille pour personne.";
+    else if (couple.includes(t.id)) offer.locked = "Ton cœur est déjà pris par le couple de nuit.";
+    else if (t.role === "pasteur") offer.locked = "Un homme de Dieu ne se vend pas.";
+  }
+  return offer;
 }
 
 function kill(room, id, cause, deaths) {
@@ -365,28 +396,28 @@ function resolveNight(room) {
   }
   const inCouple = (id) => room.couple && (id === room.couple.femme || id === room.couple.mari);
 
-  // 4. The secte tries to buy someone.
-  const gourou = actor("gourou");
-  const offer = act(gourou);
+  // 4. The secte's offer, answered during the night chat (no answer means no).
+  const offer = ns.offer;
   if (offer) {
-    const t = room.players.get(offer);
-    let outcome;
-    if (!t || !t.alive || isSecte(t)) outcome = null;
-    else if (away(offer)) outcome = `${t.name} n'était pas chez lui.`;
-    else if (safe(offer)) { outcome = `${t.name} était protégé cette nuit.`; saved = true; }
-    else if (t.role === "ndoki" || t.role === "pyromane" || inCouple(offer)) outcome = `${t.name} a refusé la richesse.`;
-    else if (t.role === "pasteur") {
-      outcome = `${t.name} a refusé la richesse.`;
-      note(room, t.id, `La secte a essayé de t'acheter cette nuit. Le Gourou, c'est ${gourou.name}.`);
-    } else {
+    const t = room.players.get(offer.target);
+    const g = room.players.get(offer.gourou);
+    let outcome = null;
+    if (!t.alive) outcome = null;
+    else if (offer.status === "absent") outcome = `${t.name} n'était pas chez lui.`;
+    else if (offer.status === "protected") { outcome = `${t.name} était protégé cette nuit.`; saved = true; }
+    else if (offer.status === "accepted" && !offer.locked && !isSecte(t)) {
       t.role = "adepte";
       room.secteOrder.push(t.id);
       outcome = `${t.name} a accepté la richesse : il entre dans la secte.`;
-      note(room, t.id, "Le Gourou t'a proposé la richesse et tu as accepté : tu es maintenant Adepte de la secte.");
+      note(room, t.id, "Tu as accepté la richesse : tu es maintenant Adepte de la secte. Ton ancien pouvoir est perdu.");
+    } else {
+      outcome = `${t.name} a refusé la richesse.`;
+      note(room, t.id, offer.locked ? `Un inconnu t'a proposé la richesse cette nuit. ${offer.locked} Tu as refusé.` : "Un inconnu t'a proposé la richesse cette nuit, et tu as refusé.");
+      if (t.role === "pasteur") note(room, t.id, `La secte a essayé de t'acheter cette nuit. Le Gourou, c'est ${g.name}.`);
     }
     if (outcome) {
-      for (const s of alive(room).filter(isSecte)) if (s.id !== offer) note(room, s.id, outcome);
-      log.events.push(`Le Gourou ${gourou.name} vise ${nameOf(room, offer)} : ${outcome}`);
+      for (const s of alive(room).filter(isSecte)) if (s.id !== t.id) note(room, s.id, outcome);
+      log.events.push(`Le Gourou ${g.name} vise ${t.name} : ${outcome}`);
     }
   }
 
@@ -673,6 +704,13 @@ const handlers = {
     }
   },
 
+  offer(room, me, msg) {
+    if (room.phase !== "night_chat" || !me.alive) return;
+    const o = room.nightState.offer;
+    if (!o || o.target !== me.id || o.status !== "pending" || o.locked) return;
+    o.status = msg.accept ? "accepted" : "refused";
+  },
+
   closeDebate(room, me) {
     if (room.phase !== "debate" || me.id !== room.chefId) return;
     if (Date.now() < room.debate.minAt) return "Le débat doit durer au moins 2 minutes.";
@@ -841,7 +879,9 @@ function viewFor(room, me) {
     case "night_chat": {
       const ns = room.nightState;
       const arrested = ns.arrested === me.id;
+      const o = ns.offer;
       view.nightChat = {
+        offer: o && o.target === me.id && me.alive && o.status !== "absent" && o.status !== "protected" ? { status: o.status, locked: o.locked } : null,
         arrested,
         myPseudo: me.alive ? ns.pseudos.get(me.id) : null,
         messages: arrested ? [] : ns.chat.map((m) => ({ pseudo: m.pseudo, text: m.text, mine: m.from === me.id })),

@@ -31,7 +31,7 @@ La nuit, les Ndoki choisissent qui manger, pendant que le Nganga consulte les es
 | Habitant | Village | Aucun pouvoir. |
 | Bouc émissaire | Seul | Gagne seul s'il est chassé au vote. |
 | Pyromane | Seul | Arrose une maison chaque nuit, ou met le feu à toutes les maisons arrosées. Gagne s'il reste le dernier (ou seul face à un voisin). |
-| Gourou des Rose-Croix | Secte | Chaque nuit, propose la richesse à un joueur : il devient Adepte. Les Ndoki, le Pyromane, le couple et le Pasteur refusent toujours. |
+| Gourou des Rose-Croix | Secte | Chaque nuit, propose la richesse à un joueur. Pendant le chat de nuit, ce joueur choisit d'accepter (il devient Adepte et perd son pouvoir) ou de refuser, sans savoir qui est le Gourou. Les Ndoki, le Pyromane, le couple et le Pasteur ne peuvent que refuser ; le Pasteur découvre alors le Gourou. |
 | Femme de nuit | Couple | La première nuit, choisit son mari de nuit. Ils gagnent s'ils sont les deux derniers. Si l'un meurt, l'autre meurt de chagrin. |
 
 Les Ndoki sont fixes (1 jusqu'à 5 joueurs, 2 de 6 à 9, 3 à 10), le Nganga est toujours présent, et les autres rôles sont tirés au hasard selon le nombre de joueurs (Pyromane à partir de 6, secte à partir de 7).

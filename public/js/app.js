@@ -36,7 +36,7 @@ const ICON = {
   back: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
 };
 
-const ASSET_VERSION = "3"; // bump when an image changes so phones load the new one
+const ASSET_VERSION = "4"; // bump when an image changes so phones load the new one
 const IMG = {
   ndoki: "/img/ndoki.jpg?v=" + ASSET_VERSION,
   nganga: "/img/nganga.jpg?v=" + ASSET_VERSION,
@@ -79,7 +79,7 @@ const ROLE_LIST = [
   ["habitant", "Habitant", "village", "Aucun pouvoir : écoute les rumeurs, débat, vote."],
   ["bouc", "Bouc émissaire", "seul", "Gagne seul s'il est chassé par le vote du jour."],
   ["pyromane", "Pyromane", "pyromane", "Arrose des maisons, puis y met le feu. Gagne s'il reste le dernier."],
-  ["gourou", "Gourou des Rose-Croix", "secte", "Achète un voisin chaque nuit avec la richesse. La secte veut rester seule."],
+  ["gourou", "Gourou des Rose-Croix", "secte", "Propose la richesse à un voisin chaque nuit : libre à lui d'accepter. La secte veut rester seule."],
   ["adepte", "Adepte de la secte", "secte", "A accepté la richesse. Aide la secte à rester seule dans le quartier."],
   ["femme", "Femme de nuit", "couple", "Choisit un mari de nuit. Ensemble, ils veulent être les deux derniers."],
   ["chef", "Chef de quartier", "titre", "Élu par le village. Clôture le débat et départage les égalités."],
@@ -490,6 +490,20 @@ function screenNightChat() {
     bleed(IMG.nuit, "La rue du quartier la nuit", true), bar, deadNote(),
     el("h1", { style: "font-size:28px" }, "Rumeurs du quartier"),
     nc.myPseudo ? el("p", { class: "small muted" }, "Tout le monde écrit sous un pseudo tiré au hasard. Ce soir, tu es ", el("span", { class: "sign" }, nc.myPseudo)) : null,
+    nc.offer ? el("div", { class: "card outline", role: "alert" },
+      el("div", { class: "row", style: "align-items:flex-start" },
+        el("img", { src: IMG.gourou, alt: "", style: "width:72px;height:72px;object-fit:cover;border-radius:14px;flex:none" }),
+        el("div", { class: "stack", style: "gap:4px" },
+          el("b", {}, "On frappe à ta porte…"),
+          el("p", { class: "small" }, "Un inconnu en costume brillant te propose la richesse. Si tu acceptes, tu entres dans sa secte et tu perds ton pouvoir."))),
+      nc.offer.locked
+        ? el("p", { class: "small", style: "font-weight:700;color:var(--lamp)" }, `${nc.offer.locked} Tu refuses.`)
+        : nc.offer.status === "pending"
+          ? el("div", { class: "row" },
+              el("button", { class: "btn small", type: "button", style: "flex:1", onclick: () => send("offer", { accept: true }) }, "Accepter"),
+              el("button", { class: "btn ghost small", type: "button", style: "flex:1", onclick: () => send("offer", { accept: false }) }, "Refuser"))
+          : el("p", { class: "small", style: "font-weight:700;color:var(--lamp)" }, nc.offer.status === "accepted" ? "Tu as accepté. Tu découvriras la secte au matin." : "Tu as refusé."),
+      nc.offer.status === "pending" && !nc.offer.locked ? el("p", { class: "small muted" }, "Sans réponse avant la fin du chat, c'est non.") : null) : null,
     chatLog("nightChat", nc.messages, (m) => el("div", { class: `msg${m.mine ? " mine" : ""}` },
       el("span", { class: "sign" }, m.pseudo, m.mine ? " (toi)" : ""), el("p", { class: "bubble" }, m.text)), "Le quartier est silencieux… lance une rumeur."),
     el("div", { class: "grow" }),
