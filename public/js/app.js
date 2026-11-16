@@ -94,7 +94,8 @@ const CAUSE = {
   vote: (n) => `Le quartier a chassé ${n}`,
 };
 
-const COLORS = ["#1f9d6b", "#3a75c4", "#b8452f", "#8e5ab8", "#c97a1e", "#24808c", "#5e6270", "#b54a7d", "#6f8a1f", "#a0522d"];
+const COLORS = ["#1f9d6b", "#3a75c4", "#b8452f", "#8e5ab8", "#c97a1e", "#24808c", "#5e6270", "#b54a7d", "#6f8a1f", "#a0522d",
+  "#2e6f9e", "#9b3b5a", "#4f7d3a", "#7a4fb0", "#b5651d", "#1d7f72", "#8a6d1f", "#c0392b", "#3b5bdb", "#6b4226"];
 
 /* ---------------- state ---------------- */
 
@@ -297,7 +298,7 @@ function screenLobby() {
       el("button", { class: "link-btn", type: "button", onclick: async () => {
         try { await navigator.clipboard.writeText(link); toast("Lien copié."); } catch { toast(link); }
       } }, "Copier le lien")),
-    el("div", { class: "row between" }, el("h2", { style: "font-size:22px" }, "Joueurs"), el("span", { class: "muted", style: "font-weight:600" }, `${n} / 10`)),
+    el("div", { class: "row between" }, el("h2", { style: "font-size:22px" }, "Joueurs"), el("span", { class: "muted", style: "font-weight:600" }, `${n} / 20`)),
     el("div", { class: "card list" }, S.players.map((p) =>
       el("div", { class: "item" }, avatar(p), el("span", { class: "grow", style: "font-weight:600" }, p.name, p.id === me.id ? " (toi)" : ""),
         p.isHost ? el("span", { class: "tag" }, "hôte") : null,

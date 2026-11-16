@@ -6,7 +6,7 @@ const crypto = require("crypto");
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MIN_PLAYERS = 4;
-const MAX_PLAYERS = 10;
+const MAX_PLAYERS = 20;
 const SCALE = Math.max(0.01, Number(process.env.TIME_SCALE) || 1); // shorter timers for tests
 
 // Durations in seconds (see the gameplay document).
@@ -46,7 +46,11 @@ const SECONDARY = [
   ["policier", 4], ["marabout", 4], ["pasteur", 4], ["gardien", 4], ["bouc", 5], ["chasseur", 4],
   ["chauffeur", 5], ["ivrogne", 5], ["femme", 5], ["pyromane", 6], ["gourou", 7],
 ];
-const SECONDARY_CHANCE = { 4: 0.05, 5: 0.1, 6: 0.15, 7: 0.22, 8: 0.3, 9: 0.38, 10: 0.45 };
+// Chance for each secondary role to be in the game. Each role appears at most once.
+const SECONDARY_CHANCE = {
+  4: 0.05, 5: 0.1, 6: 0.15, 7: 0.22, 8: 0.3, 9: 0.38, 10: 0.45, 11: 0.5, 12: 0.55,
+  13: 0.6, 14: 0.65, 15: 0.7, 16: 0.75, 17: 0.8, 18: 0.85, 19: 0.9, 20: 0.95,
+};
 const IVROGNE_DREAMS = ["nganga", "policier", "marabout"];
 
 const PSEUDOS = [
@@ -54,6 +58,8 @@ const PSEUDOS = [
   "La Tantine", "Le Laveur de voitures", "La Vendeuse de manioc", "Le Mécanicien",
   "Le Gardien de nuit", "La Couturière", "Le Vendeur d'unités", "La Vendeuse de beignets",
   "Le Tailleur", "Le Cordonnier", "La Pharmacienne", "Le Maçon", "La Restauratrice",
+  "Le Vulcanisateur", "La Vendeuse de poisson", "Le Menuisier", "La Revendeuse de pagnes",
+  "Le Photographe", "La Vendeuse d'arachides", "Le Soudeur", "La Directrice d'école",
 ];
 
 const rooms = new Map();
@@ -109,7 +115,10 @@ const nightRole = (p) => (p.role === "ivrogne" ? p.dream : p.role);
 
 /* ---------------- roles ---------------- */
 
+// About one Ndoki for four players: 1 up to 5, 2 from 6, 3 from 10, 4 from 14, 5 from 18.
 function ndokiCount(n) {
+  if (n >= 18) return 5;
+  if (n >= 14) return 4;
   if (n >= 10) return 3;
   if (n >= 6) return 2;
   return 1;
@@ -1003,7 +1012,7 @@ function handleConnection(ws) {
       if (!room) return error("Aucune partie avec ce code.");
       if (!name) return error("Choisis un pseudo.");
       if (room.phase !== "lobby") return error("La partie a déjà commencé.");
-      if (room.players.size >= MAX_PLAYERS) return error("La partie est complète (10 joueurs).");
+      if (room.players.size >= MAX_PLAYERS) return error(`La partie est complète (${MAX_PLAYERS} joueurs).`);
       if ([...room.players.values()].some((p) => p.name.toLowerCase() === name.toLowerCase())) return error("Ce pseudo est déjà pris dans cette partie.");
       return attach(room, addPlayer(room, name), ws);
     }

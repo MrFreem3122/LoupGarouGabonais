@@ -1,6 +1,6 @@
 # Loup-Garou gabonais
 
-Un jeu de déduction en ligne, de 4 à 10 joueurs, inspiré du Loup-Garou et ancré dans un quartier de ville gabonaise. Chacun joue depuis son téléphone ; la partie se rejoint avec un code partagé sur WhatsApp.
+Un jeu de déduction en ligne, de 4 à 20 joueurs, inspiré du Loup-Garou et ancré dans un quartier de ville gabonaise. Chacun joue depuis son téléphone ; la partie se rejoint avec un code partagé sur WhatsApp.
 
 La nuit, les Ndoki choisissent qui manger, pendant que le Nganga consulte les esprits, que le Policier met quelqu'un au poste et que le Marabout bénit un voisin. Tout le monde lance ensuite des rumeurs dans un chat anonyme, sous un pseudo de quartier tiré au hasard. Le jour, on débat au maquis, puis on vote en direct pour chasser un suspect.
 
@@ -34,7 +34,7 @@ La nuit, les Ndoki choisissent qui manger, pendant que le Nganga consulte les es
 | Gourou des Rose-Croix | Secte | Chaque nuit, propose la richesse à un joueur. Pendant le chat de nuit, ce joueur choisit d'accepter (il devient Adepte et perd son pouvoir) ou de refuser, sans savoir qui est le Gourou. Les Ndoki, le Pyromane, le couple et le Pasteur ne peuvent que refuser ; le Pasteur découvre alors le Gourou. |
 | Femme de nuit | Couple | La première nuit, choisit son mari de nuit. Ils gagnent s'ils sont les deux derniers. Si l'un meurt, l'autre meurt de chagrin. |
 
-Les Ndoki sont fixes (1 jusqu'à 5 joueurs, 2 de 6 à 9, 3 à 10), le Nganga est toujours présent, et les autres rôles sont tirés au hasard selon le nombre de joueurs (Pyromane à partir de 6, secte à partir de 7).
+Les Ndoki sont fixes (environ un pour quatre joueurs : 1 jusqu'à 5, 2 dès 6, 3 dès 10, 4 dès 14, 5 dès 18). Le Nganga est toujours présent. Les autres rôles sont tirés au hasard, chacun **au plus une fois par partie**, avec plus de chances d'apparaître quand il y a plus de joueurs (5 % à 4 joueurs, 45 % à 10, 95 % à 20). Pyromane à partir de 6 joueurs, secte à partir de 7.
 
 **Qui gagne ?** Un camp gagne quand il est le seul à avoir encore des joueurs en vie. Les Ndoki et la secte gagnent aussi quand ils sont aussi nombreux que les simples voisins, mais seulement s'il ne reste aucun autre camp dangereux.
 
